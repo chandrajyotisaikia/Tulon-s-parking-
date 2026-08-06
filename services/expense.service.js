@@ -1,20 +1,27 @@
 // services/expense.service.js — logging and totaling daily expenses
-const db = require('../db/db');
+const { loadData, saveData } = require('../db/db');
 
 function addExpense({ amount, description, expenseDate }) {
-  const stmt = db.prepare(
-    `INSERT INTO expenses (amount, description, expense_date) VALUES (?, ?, ?)`
-  );
-  return stmt.run(amount, description, expenseDate);
+  const data = loadData();
+  const newExpense = {
+    id: data.nextIds.expense++,
+    amount: parseFloat(amount),
+    description,
+    expense_date: expenseDate,
+  };
+  data.expenses.push(newExpense);
+  saveData(data);
+  return newExpense;
 }
 
 function listExpenses() {
-  return db.prepare(`SELECT * FROM expenses ORDER BY expense_date DESC, id DESC`).all();
+  const data = loadData();
+  return [...data.expenses].sort((a, b) => b.expense_date.localeCompare(a.expense_date) || b.id - a.id);
 }
 
 function totalExpenses() {
-  const row = db.prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM expenses`).get();
-  return row.total;
+  const data = loadData();
+  return data.expenses.reduce((sum, e) => sum + e.amount, 0);
 }
 
 module.exports = { addExpense, listExpenses, totalExpenses };
