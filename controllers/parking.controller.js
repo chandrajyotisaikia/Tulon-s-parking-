@@ -1,5 +1,5 @@
 // controllers/parking.controller.js — receives requests, calls services, sends responses
-const db = require('../db/db');
+const { loadData, saveData } = require('../db/db');
 const { calculateCharge } = require('../services/pricing.service');
 const { checkSubscriber, addSubscriber, listSubscribers } = require('../services/subscriber.service');
 const { addExpense, listExpenses, totalExpenses } = require('../services/expense.service');
@@ -16,15 +16,22 @@ function verifyAndLog(req, res) {
     const amount = calculateCharge(vehicleType, isSubscriber);
     const plate = vehicleNumber.toUpperCase().replace(/\s+/g, '');
 
-    const stmt = db.prepare(
-      `INSERT INTO daily_entries (vehicle_number, vehicle_type, is_subscriber, amount_charged)
-       VALUES (?, ?, ?, ?)`
-    );
-    const result = stmt.run(plate, vehicleType.toUpperCase(), isSubscriber ? 1 : 0, amount);
+    const data = loadData();
+    const newEntry = {
+      id: data.nextIds.entry++,
+      vehicle_number: plate,
+      vehicle_type: vehicleType.toUpperCase(),
+      is_subscriber: isSubscriber,
+      amount_charged: amount,
+      entry_time: new Date().toISOString(),
+      status: 'ACTIVE',
+    };
+    data.entries.push(newEntry);
+    saveData(data);
 
     return res.status(201).json({
       success: true,
-      entryId: result.lastInsertRowid,
+      entryId: newEntry.id,
       vehicleNumber: plate,
       vehicleType: vehicleType.toUpperCase(),
       isSubscriber,
@@ -51,7 +58,8 @@ function quickCheckSubscriber(req, res) {
 
 // GET /api/entries
 function getEntries(req, res) {
-  const rows = db.prepare(`SELECT * FROM daily_entries ORDER BY entry_time DESC LIMIT 20`).all();
+  const data = loadData();
+  const rows = [...data.entries].sort((a, b) => b.entry_time.localeCompare(a.entry_time)).slice(0, 20);
   return res.json({ success: true, entries: rows });
 }
 
@@ -91,7 +99,8 @@ function getExpenses(req, res) {
 
 // GET /api/summary — totals for the desktop dashboard
 function getSummary(req, res) {
-  const income = db.prepare(`SELECT COALESCE(SUM(amount_charged), 0) as total FROM daily_entries`).get().total;
+  const data = loadData();
+  const income = data.entries.reduce((sum, e) => sum + e.amount_charged, 0);
   const expenses = totalExpenses();
   return res.json({
     success: true,
@@ -106,3 +115,4 @@ module.exports = {
   postSubscriber, getSubscribers,
   postExpense, getExpenses, getSummary,
 };
+    
